@@ -113,7 +113,7 @@ typedef struct sprite sprite_t;
 #define MaxMissiles 10
 int NeedToWrite = 0;
 int adcData = 0;
-int lvl=1;
+int lvl=0;
 
 sprite_t aliens[MaxAliens];
 sprite_t aliensrow2[MaxAliens];
@@ -129,7 +129,7 @@ void Init(void) {
 		aliens[i].vx = 1;
 		aliens[i].vy = 0;
 		aliens[i].image1 = Alien10pointA;
-		aliens[i].status = alive;
+		aliens[i].status = dead;
 		aliensrow2[i].x = 12*i + 10;
 		aliensrow2[i].y = 20;
 		aliensrow2[i].vx = 1;
@@ -168,12 +168,17 @@ void AlienMove(sprite_t aliens[]) {
 		for(int i = 0; i<MaxAliens; i++)
 		{
 			aliens[i].vx = -aliens[i].vx;
+			aliens[i].vy = 2;
 		}
 	}
 	for(int j = 0; j<MaxAliens; j++)
 	{
 		aliens[j].x += aliens[j].vx;
 		aliens[j].y += aliens[j].vy;
+	}
+	for(int k = 0; k<MaxAliens; k++)
+	{
+		aliens[k].vy = 0;
 	}
 }
 
@@ -256,8 +261,15 @@ void MissileMove(void){
 }
 int gonext=0;
 void LevelOver(void){
-	
-	if(lvl==1){
+	uint32_t btnInput = Switch_In();
+	if(lvl==0){
+		while((btnInput&0x01)==0)
+	{
+		btnInput = Switch_In();
+	}
+	gonext=1;
+	}
+	else if(lvl==1){
 		for(int i=0; i<MaxAliens; i++){
 			if(aliens[i].status == alive){
 				return;
@@ -281,17 +293,35 @@ void LevelOver(void){
 		}
 		gonext=1;
 	}
-//	if(gonext==1){
-//		lvl++;
-//	}
+	else if(lvl==4){
+		if((btnInput&0x02)==2)
+	{
+		lvl=0;
+	}
+	}
+	else if(lvl==5){
+		if((btnInput&0x02)==2)
+	{
+		lvl=0;
+	}
+	}
+
 }
 void NextLevel(void){
 	if(gonext==1){
 		lvl++;
+		if(lvl==1){
+			for(int i=0; i<MaxAliens; i++){
+				aliens[i].status = alive;
+				aliens[i].y = 10;
+			}
+		}
 		if(lvl==2){
 			for(int i=0; i<MaxAliens; i++){
 				aliens[i].status = alive;
 				aliensrow2[i].status = alive;
+				aliens[i].y = 10;
+				aliensrow2[i].y = 20;
 			}
 		}
 		else if(lvl==3){
@@ -299,15 +329,74 @@ void NextLevel(void){
 				aliens[i].status = alive;
 				aliensrow2[i].status = alive;
 				aliensrow3[i].status = alive;
+				aliens[i].y = 10;
+				aliensrow2[i].y = 20;
+				aliensrow3[i].y = 30;
 			}
+		}
+		else if(lvl==4){
+			SSD1306_ClearBuffer();
+			SSD1306_OutClear();  
+			SSD1306_SetCursor(1, 1);
+			SSD1306_OutString("Congratulations!");
+			SSD1306_SetCursor(1, 2);
+			SSD1306_OutString("You Win!");
+			SSD1306_SetCursor(1, 3);
+			SSD1306_OutString("Press Button 2 to ");
+			SSD1306_SetCursor(1, 4);
+			SSD1306_OutString("Play Again");
+		}
+		else if(lvl==5){
+			SSD1306_ClearBuffer();
+			SSD1306_OutClear();  
+			SSD1306_SetCursor(1, 1);
+			SSD1306_OutString("Game Over");
+			SSD1306_SetCursor(1, 2);
+			SSD1306_OutString("You Lose");
+			SSD1306_SetCursor(1, 3);
+			SSD1306_OutString("Press Button 2 to ");
+			SSD1306_SetCursor(1, 4);
+			SSD1306_OutString("Play Again");
 		}
 		gonext=0;
 	}
 	
 }
+void IsLost(void){
+	if(lvl==1){
+		for(int i=0; i<MaxAliens; i++){
+			if(aliens[i].status==alive && aliens[i].y>55){
+				lvl=4;            //goes to lvl 4 so that the gonext function automatically increments to lvl5
+				gonext=1;
+			}
+		}
+	}
+	else if(lvl==2){
+		for(int i=0; i<MaxAliens; i++){
+			if((aliens[i].status==alive && aliens[i].y>55) || (aliensrow2[i].status==alive && aliensrow2[i].y>55)){
+				lvl=4;
+				gonext=1;
+			}
+		}
+	}
+	else if(lvl==3){
+		for(int i=0; i<MaxAliens; i++){
+			if((aliens[i].status==alive && aliens[i].y>55) || (aliensrow2[i].status==alive && aliensrow2[i].y>55) || (aliensrow3[i].status==alive && aliensrow3[i].y>55)){
+				lvl=4;
+			gonext=1;
+			}
+		}
+	}
+}
 void SysTick_Handler(void) {
 	uint32_t btnInput = Switch_In();
 	//static uint32_t unpressed = 0;
+	if(lvl==0){
+		SSD1306_ClearBuffer();
+  SSD1306_DrawBMP(2, 62, SpaceInvadersMarquee, 0, SSD1306_WHITE);
+  SSD1306_OutBuffer();
+	
+	}
 	if((btnInput&0x01)==1)
 	{
 		Fire(0, -1, Missile0);
@@ -318,9 +407,12 @@ void SysTick_Handler(void) {
 	PlayerMove();
 	Collisions();
 	MissileMove();
+	IsLost();
 	LevelOver();
 	NextLevel();
+	if(lvl!=4 && lvl!=5){
 	NeedToWrite = 1;
+	}
 }
 
 void Draw(void) {
@@ -347,7 +439,9 @@ void Draw(void) {
 			SSD1306_DrawBMP(missiles[j].x, missiles[j].y, missiles[j].image1, 0, SSD1306_INVERSE);
 		}
 	}
+	if(lvl!=0){
 	SSD1306_DrawBMP(spaceship.x, spaceship.y, spaceship.image, 0, SSD1306_INVERSE);
+	}
 	SSD1306_OutBuffer();
 	
 }
